@@ -1,0 +1,15 @@
+# Dossiers de compilation
+Debug/
+Release/
+
+# Fichiers binaires et objets
+*.o
+*.elf
+*.bin
+*.hex
+*.map
+*.su
+*.list
+
+# Fichiers de lancement propres à ton PC
+*.launch
