@@ -1,3 +1,4 @@
+// code avec seulement le capteur température
 /* USER CODE BEGIN Header */
 /**
   ******************************************************************************
@@ -21,10 +22,10 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+//#include "ssd1306.h"
+//#include "ssd1306_fonts.h"
+//#include "BMPXX80.h" // Le nom exact de ton fichier[cite: 2]
 #include <stdio.h>
-#include <string.h>
-#include "ssd1306.h"
-#include "ssd1306_fonts.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -34,6 +35,16 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define OLED_RES_Port GPIOA
+#define OLED_RES_Pin  GPIO_PIN_11 // D10
+
+#define OLED_CS_Port  GPIOA
+#define OLED_CS_Pin   GPIO_PIN_8  // D9
+
+#define OLED_DC_Port  GPIOB
+#define OLED_DC_Pin   GPIO_PIN_4  // D12
+
+#define BMP280_ADDR 0xEC // Adresse I2C (0x76 << 1)
 
 /* USER CODE END PD */
 
@@ -62,6 +73,50 @@ static void MX_I2C1_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+// 1. Redirection printf vers Tera Term
+int _write(int file, char *ptr, int len) {
+    HAL_UART_Transmit(&huart2, (uint8_t *)ptr, len, HAL_MAX_DELAY);
+    return len;
+}
+
+//// 2. Envoi de commande à l'écran
+//void OLED_WriteCmd(uint8_t cmd) {
+//    HAL_GPIO_WritePin(OLED_DC_Port, OLED_DC_Pin, GPIO_PIN_RESET); // Mode Commande
+//    HAL_GPIO_WritePin(OLED_CS_Port, OLED_CS_Pin, GPIO_PIN_RESET);
+//    HAL_SPI_Transmit(&hspi1, &cmd, 1, 10);
+//    HAL_GPIO_WritePin(OLED_CS_Port, OLED_CS_Pin, GPIO_PIN_SET);
+//}
+//
+//// 3. Initialisation de l'écran SSD1306
+//void OLED_Init(void) {
+//    HAL_GPIO_WritePin(OLED_RES_Port, OLED_RES_Pin, GPIO_PIN_RESET);
+//    HAL_Delay(100);
+//    HAL_GPIO_WritePin(OLED_RES_Port, OLED_RES_Pin, GPIO_PIN_SET);
+//    HAL_Delay(100);
+//
+//    uint8_t init_cmds[] = {0xAE, 0x20, 0x10, 0xB0, 0xC8, 0x00, 0x10, 0x40, 0x81, 0x7F, 0xA1, 0xA6, 0xA8, 0x3F, 0xA4, 0xD3, 0x00, 0xD5, 0xF0, 0xD9, 0x22, 0xDA, 0x12, 0xDB, 0x20, 0x8D, 0x14, 0xAF};
+//    for(int i=0; i<sizeof(init_cmds); i++) OLED_WriteCmd(init_cmds[i]);
+//}
+//
+//// Fonction pour remplir l'écran (0xFF = tout allumé, 0x00 = tout éteint)
+//void OLED_Fill(uint8_t pattern) {
+//    for (uint8_t page = 0; page < 8; page++) {
+//        OLED_WriteCmd(0xB0 + page); // Sélection de la ligne (page 0 à 7)
+//        OLED_WriteCmd(0x00);        // Colonne basse
+//        OLED_WriteCmd(0x10);        // Colonne haute
+//
+//        // On passe la broche DC à l'état HAUT pour dire "Ceci sont des pixels !"
+//        HAL_GPIO_WritePin(OLED_DC_Port, OLED_DC_Pin, GPIO_PIN_SET);
+//        HAL_GPIO_WritePin(OLED_CS_Port, OLED_CS_Pin, GPIO_PIN_RESET);
+//
+//        // On envoie la couleur (le motif) sur les 128 colonnes
+//        for (uint8_t col = 0; col < 128; col++) {
+//            HAL_SPI_Transmit(&hspi1, &pattern, 1, 10);
+//        }
+//        HAL_GPIO_WritePin(OLED_CS_Port, OLED_CS_Pin, GPIO_PIN_SET);
+//    }
+//}
 
 /* USER CODE END 0 */
 
@@ -97,29 +152,71 @@ int main(void)
   MX_USART2_UART_Init();
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
-  ssd1306_Init();
-  ssd1306_Fill(Black);
-  ssd1306_SetCursor(2, 0);
-  ssd1306_WriteString("Mon port HDMI", Font_7x10, White);
-  ssd1306_SetCursor(2, 10);
-  ssd1306_WriteString("est mort,", Font_7x10, White);
-  ssd1306_SetCursor(2, 20);
-  ssd1306_WriteString("mon ordi", Font_7x10, White);
-  ssd1306_SetCursor(2, 30);
-  ssd1306_WriteString("a failli mourir.", Font_7x10, White);
-  ssd1306_UpdateScreen();
+//    // Initialisation de l'OLED avec la librairie d'afiskon
+//  	HAL_Delay(500);
+//    ssd1306_Init();
+//    ssd1306_Fill(Black); // On nettoie l'écran en noir
+//    ssd1306_SetCursor(10, 25);
+//    ssd1306_WriteString("SYSTEME OK", Font_11x18, White);
+//    ssd1306_UpdateScreen(); // On envoie l'image à l'écran
+//
+//    HAL_Delay(1500); // On affiche ce message de bienvenue pendant 1.5s
+//
+//    // Configuration manuelle du BMP280 (comme avant, car elle marche super bien)
+//    uint8_t chip_id = 0;
+//    HAL_I2C_Mem_Read(&hi2c1, 0xEC, 0xD0, 1, &chip_id, 1, 100);
+//    if (chip_id == 0x58) {
+//        uint8_t ctrl_meas = 0x27;
+//        HAL_I2C_Mem_Write(&hi2c1, 0xEC, 0xF4, 1, &ctrl_meas, 1, 100);
+//    }
 
-  char mess[100];
-  sprintf(mess, "%s\n\r","Test");
-  HAL_UART_Transmit(&huart2, (uint8_t*)mess, strlen(mess),-1);
+       printf("\r\n--- Demarrage System Avionique ---\r\n");
+
+       HAL_Delay(500);
+       uint8_t chip_id = 0;
+       // Utilisation de la vraie macro HAL au lieu du chiffre 1
+       HAL_I2C_Mem_Read(&hi2c1, BMP280_ADDR, 0xD0, I2C_MEMADD_SIZE_8BIT, &chip_id, 1, 100);
+
+       if (chip_id == 0x58) {
+             printf("Succes : BMP280 detecte ! ID = 0x%X\r\n", chip_id);
+
+             uint8_t ctrl_meas = 0x27;
+             // On vérifie si l'écriture de la configuration se passe bien !
+             if (HAL_I2C_Mem_Write(&hi2c1, BMP280_ADDR, 0xF4, I2C_MEMADD_SIZE_8BIT, &ctrl_meas, 1, 100) != HAL_OK) {
+                 printf("Erreur : Impossible de configurer le BMP280 !\r\n");
+             }
+       } else {
+             printf("Erreur : ID lu = 0x%X (BMP280 introuvable)\r\n", chip_id);
+       }
+
+       // --- ON DÉSACTIVE L'OLED TEMPORAIREMENT ---
+       // OLED_Init();
+       // OLED_Fill(0xFF);
+       // printf("OLED: Initialise sur SPI1 (A4/A6)\r\n");
+
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  while (1)
-  {
-    /* USER CODE END WHILE */
+
+         while (1)
+         {
+             uint8_t raw[6];
+
+             // On tente de lire les 6 octets de données (Pression et Température)
+             if (HAL_I2C_Mem_Read(&hi2c1, BMP280_ADDR, 0xF7, I2C_MEMADD_SIZE_8BIT, raw, 6, 100) == HAL_OK) {
+                 long press = (raw[0] << 12) | (raw[1] << 4) | (raw[2] >> 4);
+                 long temp = (raw[3] << 12) | (raw[4] << 4) | (raw[5] >> 4);
+                 printf("Pression: %ld | Temp: %ld\r\n", press, temp);
+             } else {
+                 // Si on perd la connexion
+                 printf("ERREUR I2C : Impossible de lire les donnees !\r\n");
+             }
+
+             HAL_Delay(500);
+
+       /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
   }
@@ -287,14 +384,32 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8|GPIO_PIN_11, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : LD3_Pin */
-  GPIO_InitStruct.Pin = LD3_Pin;
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOB, LD3_Pin|GPIO_PIN_4, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : PA5 */
+  GPIO_InitStruct.Pin = GPIO_PIN_5;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  GPIO_InitStruct.Alternate = GPIO_AF5_SPI1;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PA8 PA11 */
+  GPIO_InitStruct.Pin = GPIO_PIN_8|GPIO_PIN_11;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(LD3_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : LD3_Pin PB4 */
+  GPIO_InitStruct.Pin = LD3_Pin|GPIO_PIN_4;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
