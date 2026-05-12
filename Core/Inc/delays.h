@@ -12,6 +12,6 @@
 #ifndef DELAYS_H_
 #define DELAYS_H_
 
-void Delay_us(uint16_t us);
+void Delay_us(uint32_t us);
 
 #endif /* DELAYS_H_ */

@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include "ssd1306.h"
 #include "ssd1306_fonts.h"
+#include "BMPXX80.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -69,86 +70,55 @@ int main(void)
   MX_I2C1_Init();
 
   /* USER CODE BEGIN 2 */
+  printf("\r\n--- Systeme Avionique : Valeurs Reelles ---\r\n");
 
-  printf("\r\n--- Demarrage System Avionique (Full I2C) ---\r\n");
-
-  // 1. Initialisation de l'OLED
-  HAL_Delay(100); // Laisse le temps à l'écran de s'allumer électriquement
   ssd1306_Init();
-
-  // NETTOYAGE IMMÉDIAT DES PIXELS ALÉATOIRES
-  ssd1306_Fill(Black);
-  ssd1306_UpdateScreen();
-  HAL_Delay(100); // Petite pause pour stabiliser
-
-  // AFFICHAGE DU MOT "TEST"
-  ssd1306_SetCursor(40, 25); // On centre un peu le texte
-  ssd1306_WriteString("TEST", Font_11x18, White);
-  ssd1306_UpdateScreen();
-
-  // DELAI DE 2 SECONDES
-  HAL_Delay(2000);
-
-  // 2. Initialisation du capteur BMP280
-  uint8_t chip_id = 0;
-  HAL_I2C_Mem_Read(&hi2c1, BMP280_ADDR, 0xD0, I2C_MEMADD_SIZE_8BIT, &chip_id, 1, 100);
-
-  if (chip_id == 0x58) {
-      printf("Succes : BMP280 detecte ! ID = 0x%X\r\n", chip_id);
-      uint8_t ctrl_meas = 0x27; // Config de base (Mode normal, oversampling standard)
-      if (HAL_I2C_Mem_Write(&hi2c1, BMP280_ADDR, 0xF4, I2C_MEMADD_SIZE_8BIT, &ctrl_meas, 1, 100) != HAL_OK) {
-          printf("Erreur : Impossible de configurer le BMP280 !\r\n");
-      }
-  } else {
-      printf("Erreur : ID lu = 0x%X (BMP280 introuvable)\r\n", chip_id);
-  }
-
-  // Nettoyage de l'écran avant d'entrer dans la boucle
   ssd1306_Fill(Black);
   ssd1306_UpdateScreen();
 
+  // Initialisation via bibliothèque (lit les réglages de calibration) [cite: 87]
+  BMP280_Init(&hi2c1, BMP280_TEMPERATURE_16BIT, BMP280_STANDARD, BMP280_FORCEDMODE);
+
+  printf("Capteur calibre et pret.\r\n");
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  while (1)
-  {
-      uint8_t raw[6];
+    while (1)
+    {
+        float temperature = 0.0f;
+        int32_t pressure_pa = 0;
+        char oled_buf[32];
 
-      // Lecture des 6 octets de données (Pression et Température)
-      if (HAL_I2C_Mem_Read(&hi2c1, BMP280_ADDR, 0xF7, I2C_MEMADD_SIZE_8BIT, raw, 6, 100) == HAL_OK) {
+        // La bibliothèque effectue les calculs de compensation Bosch [cite: 156]
+        if (BMP280_ReadTemperatureAndPressure(&temperature, &pressure_pa) == 0) {
 
-          // Décalage binaire pour recomposer les valeurs brutes
-          long press = (raw[0] << 12) | (raw[1] << 4) | (raw[2] >> 4);
-          long temp = (raw[3] << 12) | (raw[4] << 4) | (raw[5] >> 4);
+            // Conversion Pascal en HectoPascal pour l'affichage standard
+            float pressure_hpa = (float)pressure_pa / 100.0f;
 
-          // Affichage sur le terminal (Tera Term)
-          printf("Pression: %ld | Temp: %ld\r\n", press, temp);
+            // Affichage Terminal
+            printf("Temp: %.2f C | Press: %.2f hPa\r\n", temperature, pressure_hpa);
 
-          // Affichage dynamique sur l'OLED
-          char oled_buf[32];
-          ssd1306_Fill(Black); // Efface les anciennes valeurs
+            // Affichage OLED
+            ssd1306_Fill(Black);
 
-          ssd1306_SetCursor(5, 10);
-          sprintf(oled_buf, "Press: %ld", press);
-          ssd1306_WriteString(oled_buf, Font_7x10, White);
+            // Ligne Température
+            ssd1306_SetCursor(5, 10);
+            sprintf(oled_buf, "Temp: %.2f C", temperature);
+            ssd1306_WriteString(oled_buf, Font_7x10, White);
 
-          ssd1306_SetCursor(5, 30);
-          sprintf(oled_buf, "Temp : %ld", temp);
-          ssd1306_WriteString(oled_buf, Font_7x10, White);
+            // Ligne Pression
+            ssd1306_SetCursor(5, 30);
+            sprintf(oled_buf, "Pres: %.1f hPa", pressure_hpa);
+            ssd1306_WriteString(oled_buf, Font_7x10, White);
 
-          ssd1306_UpdateScreen(); // On affiche le nouveau rendu
+            ssd1306_UpdateScreen();
+        }
+        else {
+            printf("ERREUR DE LECTURE\r\n");
+        }
 
-      } else {
-          printf("ERREUR I2C : Impossible de lire les donnees !\r\n");
-
-          ssd1306_Fill(Black);
-          ssd1306_SetCursor(5, 25);
-          ssd1306_WriteString("ERREUR CAPTEUR", Font_7x10, White);
-          ssd1306_UpdateScreen();
-      }
-
-      HAL_Delay(500); // Mise à jour toutes les demi-secondes
+        HAL_Delay(500);
 
     /* USER CODE END WHILE */
     /* USER CODE BEGIN 3 */
