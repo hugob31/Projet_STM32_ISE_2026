@@ -15,6 +15,7 @@
 #include "ssd1306.h"
 #include "ssd1306_fonts.h"
 #include "BMPXX80.h"
+#include "icm20948.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -80,47 +81,116 @@ int main(void)
   BMP280_Init(&hi2c1, BMP280_TEMPERATURE_16BIT, BMP280_STANDARD, BMP280_FORCEDMODE);
 
   printf("Capteur calibre et pret.\r\n");
+
+  //Initialisation du gyro via la bibliothèque
+  if (ICM20948_Init(&hi2c1) == 0) {
+      printf("Gyro ICM-20948 Pret et configure !\r\n");
+  } else {
+      printf("Erreur d'initialisation du Gyroscope.\r\n");
+  }
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
     while (1)
     {
+        // --- 1. Variables pour stocker les mesures ---
         float temperature = 0.0f;
         int32_t pressure_pa = 0;
+
+        float ax = 0.0f, ay = 0.0f, az = 0.0f;
+        float gx = 0.0f, gy = 0.0f, gz = 0.0f;
+
         char oled_buf[32];
 
-        // La bibliothèque effectue les calculs de compensation Bosch [cite: 156]
-        if (BMP280_ReadTemperatureAndPressure(&temperature, &pressure_pa) == 0) {
+        // --- 2. Lecture de tous les capteurs ---
+        uint8_t bmp_ok   = (BMP280_ReadTemperatureAndPressure(&temperature, &pressure_pa) == 0);
+        uint8_t accel_ok = (ICM20948_ReadAccel(&ax, &ay, &az) == 0);
+        uint8_t gyro_ok  = (ICM20948_ReadGyro(&gx, &gy, &gz) == 0);
 
-            // Conversion Pascal en HectoPascal pour l'affichage standard
-            float pressure_hpa = (float)pressure_pa / 100.0f;
+        // --- 3. Début du dessin sur l'écran (On nettoie tout) ---
+        ssd1306_Fill(Black);
 
-            // Affichage Terminal
-            printf("Temp: %.2f C | Press: %.2f hPa\r\n", temperature, pressure_hpa);
+        // ==========================================
+        // PARTIE GAUCHE : DONNÉES MÉTÉO (BMP280)
+        // ==========================================
+        if (bmp_ok) {
+            // Astuce de découpage pour éviter le plantage du %f
+            int t_entier = (int)temperature;
+            int t_dec = (int)((temperature - t_entier) * 100);
+            if(t_dec < 0) t_dec = -t_dec;
+            int p_hpa = pressure_pa / 100;
+
+            // Trace sur Tera Term (Optionnel)
+            printf("T: %d.%02d C | P: %d hPa\r\n", t_entier, t_dec, p_hpa);
 
             // Affichage OLED
-            ssd1306_Fill(Black);
-
-            // Ligne Température
-            ssd1306_SetCursor(5, 10);
-            sprintf(oled_buf, "Temp: %.2f C", temperature);
+            ssd1306_SetCursor(2, 15);
+            sprintf(oled_buf, "T:%d.%01d C", t_entier, t_dec / 10);
             ssd1306_WriteString(oled_buf, Font_7x10, White);
 
-            // Ligne Pression
-            ssd1306_SetCursor(5, 30);
-            sprintf(oled_buf, "Pres: %.1f hPa", pressure_hpa);
+            ssd1306_SetCursor(2, 35);
+            sprintf(oled_buf, "P:%d", p_hpa);
             ssd1306_WriteString(oled_buf, Font_7x10, White);
 
-            ssd1306_UpdateScreen();
-        }
-        else {
-            printf("ERREUR DE LECTURE\r\n");
+            ssd1306_SetCursor(2, 47);
+            ssd1306_WriteString("hPa", Font_7x10, White);
+        } else {
+            ssd1306_SetCursor(2, 25);
+            ssd1306_WriteString("BMP: ERR", Font_7x10, White);
         }
 
-        HAL_Delay(500);
+        // --- Ligne de séparation au milieu de l'écran ---
+        ssd1306_Line(62, 0, 62, 64, White);
 
-    /* USER CODE END WHILE */
+        // ==========================================
+        // PARTIE DROITE : HORIZON ARTIFICIEL (ICM20948)
+        // ==========================================
+        // Centre de la moitié droite (X = 96, Y = 32)
+        int center_x = 96;
+        int center_y = 32;
+
+        // Dessin du réticule central fixe (L'avion)
+        ssd1306_DrawCircle(center_x, center_y, 6, White);
+        ssd1306_DrawPixel(center_x, center_y, White);
+
+        if (accel_ok) {
+            // Calcul des décalages d'inclinaison
+            // 'ay' fait monter/descendre (tangage), 'ax' fait tourner (roulis)
+            int pitch_offset = (int)(ay * 18.0f);
+            int roll_effect = (int)(ax * 15.0f);
+
+            // Coordonnées de la ligne d'horizon mobile
+            int x1 = center_x - 22;
+            int y1 = center_y + pitch_offset - roll_effect;
+
+            int x2 = center_x + 22;
+            int y2 = center_y + pitch_offset + roll_effect;
+
+            // Blocage de sécurité pour ne pas dessiner hors de l'écran
+            if (y1 < 0) y1 = 0;  if (y1 > 63) y1 = 63;
+            if (y2 < 0) y2 = 0;  if (y2 > 63) y2 = 63;
+
+            // Dessin de l'horizon
+            ssd1306_Line(x1, y1, x2, y2, White);
+
+            // Trace console
+            int ax_int = (int)(ax * 100);
+            int ay_int = (int)(ay * 100);
+            printf("ICM -> Ax: %d | Ay: %d\r\n", ax_int, ay_int);
+        } else {
+            // Croix d'erreur si le capteur est débranché
+            ssd1306_Line(76, 12, 116, 52, White);
+            ssd1306_Line(116, 12, 76, 52, White);
+        }
+
+        // --- 4. Envoi de toute l'image construite vers l'OLED ---
+        ssd1306_UpdateScreen();
+
+        // Délai très court (50 ms) pour une animation fluide de l'horizon (20 FPS)
+        HAL_Delay(50);
+
+      /* USER CODE END WHILE */
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
