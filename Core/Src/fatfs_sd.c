@@ -53,8 +53,8 @@ static int select(void)
     SD_CS_LOW();
     SPI_RW(0xFF);
 
-    /* CORRECTIF : Si la carte n'est pas encore identifiee (CardType == 0),
-       on n'attend pas le signal "ready" car elle est encore en mode SD ! */
+    /* CORRECTIF LOGICIEL : Si la carte n'est pas encore identifiée,
+       on n'attend pas le signal ready pour éviter un timeout initial */
     if (CardType == 0 || wait_ready(500)) return 1;
 
     deselect();
@@ -66,13 +66,19 @@ static int rcvr_datablock(BYTE *buff, UINT btr)
     uint8_t token;
     uint32_t start = HAL_GetTick();
 
+    // Attente du token de debut de bloc (0xFE)
     do {
         token = SPI_RW(0xFF);
     } while (token == 0xFF && (HAL_GetTick() - start) < 200);
 
     if (token != 0xFE) return 0;
 
-    HAL_SPI_Receive(&hspi3, buff, btr, 200);
+    // --- CORRECTIF : On remplace HAL_SPI_Receive par une boucle SPI_RW(0xFF) ---
+    // Cela force la ligne MOSI a rester a 0xFF comme l'exige la carte SD
+    for (UINT i = 0; i < btr; i++) {
+        buff[i] = SPI_RW(0xFF);
+    }
+
     SPI_RW(0xFF); /* CRC dummy 1 */
     SPI_RW(0xFF); /* CRC dummy 2 */
 
@@ -87,6 +93,16 @@ static int xmit_datablock(const BYTE *buff, BYTE token)
 
     if (token != 0xFD) {
         HAL_SPI_Transmit(&hspi3, (uint8_t*)buff, 512, 200);
+
+        // --- CORRECTIF OBLIGATOIRE : Vidage FIFO & RAZ du Flag OVR ---
+        volatile uint8_t dummy;
+        while (__HAL_SPI_GET_FLAG(&hspi3, SPI_FLAG_RXNE)) {
+            dummy = hspi3.Instance->DR;
+            (void)dummy;
+        }
+        __HAL_SPI_CLEAR_OVRFLAG(&hspi3);
+        // -------------------------------------------------------------
+
         SPI_RW(0xFF);
         SPI_RW(0xFF);
 
@@ -120,7 +136,9 @@ static BYTE send_cmd(BYTE cmd, DWORD arg)
     else if (cmd == 8) buf[5] = 0x87;
     else buf[5] = 0x01;
 
-    HAL_SPI_Transmit(&hspi3, buf, 6, 100);
+    // --- CORRECTIF : Utilisation de TransmitReceive pour garder la FIFO propre ---
+    uint8_t rx_dummy[6];
+    HAL_SPI_TransmitReceive(&hspi3, buf, rx_dummy, 6, 100);
 
     if (cmd == 12) SPI_RW(0xFF); /* octet de remplissage CMD12 */
 
