@@ -26,7 +26,7 @@ static BYTE CardType;
 static uint8_t SPI_RW(uint8_t dat)
 {
     uint8_t rx;
-    HAL_SPI_TransmitReceive(&hspi1, &dat, &rx, 1, 100);
+    HAL_SPI_TransmitReceive(&hspi3, &dat, &rx, 1, 100);
     return rx;
 }
 
@@ -53,7 +53,9 @@ static int select(void)
     SD_CS_LOW();
     SPI_RW(0xFF);
 
-    if (wait_ready(500)) return 1;
+    /* CORRECTIF : Si la carte n'est pas encore identifiee (CardType == 0),
+       on n'attend pas le signal "ready" car elle est encore en mode SD ! */
+    if (CardType == 0 || wait_ready(500)) return 1;
 
     deselect();
     return 0;
@@ -70,7 +72,7 @@ static int rcvr_datablock(BYTE *buff, UINT btr)
 
     if (token != 0xFE) return 0;
 
-    HAL_SPI_Receive(&hspi1, buff, btr, 200);
+    HAL_SPI_Receive(&hspi3, buff, btr, 200);
     SPI_RW(0xFF); /* CRC dummy 1 */
     SPI_RW(0xFF); /* CRC dummy 2 */
 
@@ -84,7 +86,7 @@ static int xmit_datablock(const BYTE *buff, BYTE token)
     SPI_RW(token);
 
     if (token != 0xFD) {
-        HAL_SPI_Transmit(&hspi1, (uint8_t*)buff, 512, 200);
+        HAL_SPI_Transmit(&hspi3, (uint8_t*)buff, 512, 200);
         SPI_RW(0xFF);
         SPI_RW(0xFF);
 
@@ -118,7 +120,7 @@ static BYTE send_cmd(BYTE cmd, DWORD arg)
     else if (cmd == 8) buf[5] = 0x87;
     else buf[5] = 0x01;
 
-    HAL_SPI_Transmit(&hspi1, buf, 6, 100);
+    HAL_SPI_Transmit(&hspi3, buf, 6, 100);
 
     if (cmd == 12) SPI_RW(0xFF); /* octet de remplissage CMD12 */
 

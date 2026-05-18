@@ -6,7 +6,7 @@
 #include "diskio.h"
 
 /* ---- Handle SPI à utiliser ---- */
-extern SPI_HandleTypeDef hspi1;
+extern SPI_HandleTypeDef hspi3;
 
 /* ---- Broche Chip Select PA4 ---- */
 #define SD_CS_GPIO_Port  GPIOA
