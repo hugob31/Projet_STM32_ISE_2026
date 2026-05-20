@@ -18,6 +18,7 @@
 #include "BMPXX80.h"
 #include "icm20948.h"
 #include "sd_logger.h"
+#include "arinc429.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -155,6 +156,13 @@ int main(void)
             int t_dec = (int)((temperature - t_entier) * 100);
             if(t_dec < 0) t_dec = -t_dec;
             int p_hpa = pressure_pa / 100;
+
+            // ==========================================
+            // Génération du mot ARINC 429
+            // ==========================================
+
+            uint32_t mon_mot_arinc = Generer_Mot_ARINC429_Pression(p_hpa);
+            printf("Pression: %d hPa | Mot ARINC 429: 0x%08lX\r\n", p_hpa, mon_mot_arinc);
 
             // Affichage OLED
             ssd1306_SetCursor(2, 15);
