@@ -40,7 +40,7 @@ I2C_HandleTypeDef hi2c1;
 
 SPI_HandleTypeDef hspi3;
 
-TIM_HandleTypeDef htim2;
+TIM_HandleTypeDef htim15;
 
 UART_HandleTypeDef huart2;
 
@@ -53,7 +53,7 @@ static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_SPI3_Init(void);
-static void MX_TIM2_Init(void);
+static void MX_TIM15_Init(void);
 /* USER CODE BEGIN PFP */
 /* USER CODE END PFP */
 
@@ -101,7 +101,7 @@ int main(void)
   MX_I2C1_Init();
   MX_FATFS_Init();
   MX_SPI3_Init();
-  MX_TIM2_Init();
+  MX_TIM15_Init();
   /* USER CODE BEGIN 2 */
   printf("\r\n--- Systeme Avionique : Valeurs Reelles ---\r\n");
 
@@ -123,7 +123,7 @@ int main(void)
 
   //Init carte SD
   //AJout délais
-  HAL_Delay(500);
+  HAL_Delay(1000);
   if (SD_Logger_Init() == 0) {
         printf("Carte SD initialisee ! Fichier VOL_001.CSV cree.\r\n");
     } else {
@@ -131,9 +131,17 @@ int main(void)
     }
 
 
-    // Initialisation du Servomoteur
-    Servo_Init(&htim2, TIM_CHANNEL_1);
-    printf("Servomoteur initialise.\r\n");
+  // Initialisation du Servomoteur
+  HAL_Delay(1000);
+  Servo_Init(&htim15, TIM_CHANNEL_2);
+  //HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
+  printf("Servomoteur initialise.\r\n");
+  float yaw = 0.0f;
+  // TEST BRUTE-FORCE : On force l'impulsion à 2000 µs (+90°)
+    __HAL_TIM_SET_COMPARE(&htim15, TIM_CHANNEL_2, 2000);
+    HAL_Delay(1000); // On attend 1 seconde pour voir s'il bouge
+    __HAL_TIM_SET_COMPARE(&htim15, TIM_CHANNEL_2, 1000); // Puis on le force à -90°
+
 
   /* USER CODE END 2 */
 
@@ -141,6 +149,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
     while (1)
     {
+    	//__HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 1500);
         // --- 1. Variables pour stocker les mesures ---
         float temperature = 0.0f;
         int32_t pressure_pa = 0;
@@ -161,11 +170,34 @@ int main(void)
         // ==========================================
 		// GESTION DU SERVOMOTEUR (LACET / YAW)
 		// ==========================================
-		if (accel_ok) {
+		if (gz > 2.0f || gz < -2.0f) {
+			// Intégration de la vitesse pour obtenir l'angle
+			yaw -= (gz * 0.05f);
+		}
+
+		// 1. Bridage mathématique de l'angle (-90° à +90°)
+		if (yaw > 90.0f) yaw = 90.0f;
+		if (yaw < -90.0f) yaw = -90.0f;
+
+		// 2. Calcul direct de l'impulsion (5.55 µs par degré)
+		uint32_t pulse = 1500 + (int32_t)(yaw * 5.55f);
+
+		// 3. Sécurité mécanique absolue
+		if (pulse < 1000) pulse = 1000;
+		if (pulse > 2000) pulse = 2000;
+
+		// 4. Ordre matériel direct au Timer 15 (On bypass le fichier servo.c)
+		__HAL_TIM_SET_COMPARE(&htim15, TIM_CHANNEL_2, pulse);
+
+		// 5. Affichage Tera Term complet pour vérifier que le Pulse suit bien l'angle
+		printf("GZ: %.2f | Angle YAW: %.2f | Pulse PWM: %lu us\r\n", gz, yaw, pulse);
+        //Servo_UpdateYaw(yaw);
+        //__HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 1500);
+		//if (accel_ok) {
 			// On met à jour l'angle.
 			// On passe 'gz' (la vitesse lue du gyro) et '0.05f' (le temps de boucle 50ms)
-			Servo_UpdateYaw(gz, 0.05f);
-		}
+			//Servo_UpdateYaw(gz, 0.05f);
+		//}
 
 
         // ==========================================
@@ -413,61 +445,77 @@ static void MX_SPI3_Init(void)
 }
 
 /**
-  * @brief TIM2 Initialization Function
+  * @brief TIM15 Initialization Function
   * @param None
   * @retval None
   */
-static void MX_TIM2_Init(void)
+static void MX_TIM15_Init(void)
 {
 
-  /* USER CODE BEGIN TIM2_Init 0 */
+  /* USER CODE BEGIN TIM15_Init 0 */
 
-  /* USER CODE END TIM2_Init 0 */
+  /* USER CODE END TIM15_Init 0 */
 
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
   TIM_OC_InitTypeDef sConfigOC = {0};
+  TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig = {0};
 
-  /* USER CODE BEGIN TIM2_Init 1 */
+  /* USER CODE BEGIN TIM15_Init 1 */
 
-  /* USER CODE END TIM2_Init 1 */
-  htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 79;
-  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 19999;
-  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  /* USER CODE END TIM15_Init 1 */
+  htim15.Instance = TIM15;
+  htim15.Init.Prescaler = 31;
+  htim15.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim15.Init.Period = 19999;
+  htim15.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim15.Init.RepetitionCounter = 0;
+  htim15.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim15) != HAL_OK)
   {
     Error_Handler();
   }
   sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
-  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
+  if (HAL_TIM_ConfigClockSource(&htim15, &sClockSourceConfig) != HAL_OK)
   {
     Error_Handler();
   }
-  if (HAL_TIM_PWM_Init(&htim2) != HAL_OK)
+  if (HAL_TIM_PWM_Init(&htim15) != HAL_OK)
   {
     Error_Handler();
   }
   sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim15, &sMasterConfig) != HAL_OK)
   {
     Error_Handler();
   }
   sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 1500;
+  sConfigOC.Pulse = 0;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  sConfigOC.OCIdleState = TIM_OCIDLESTATE_RESET;
+  sConfigOC.OCNIdleState = TIM_OCNIDLESTATE_RESET;
+  if (HAL_TIM_PWM_ConfigChannel(&htim15, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN TIM2_Init 2 */
+  sBreakDeadTimeConfig.OffStateRunMode = TIM_OSSR_DISABLE;
+  sBreakDeadTimeConfig.OffStateIDLEMode = TIM_OSSI_DISABLE;
+  sBreakDeadTimeConfig.LockLevel = TIM_LOCKLEVEL_OFF;
+  sBreakDeadTimeConfig.DeadTime = 0;
+  sBreakDeadTimeConfig.BreakState = TIM_BREAK_DISABLE;
+  sBreakDeadTimeConfig.BreakPolarity = TIM_BREAKPOLARITY_HIGH;
+  sBreakDeadTimeConfig.AutomaticOutput = TIM_AUTOMATICOUTPUT_DISABLE;
+  if (HAL_TIMEx_ConfigBreakDeadTime(&htim15, &sBreakDeadTimeConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM15_Init 2 */
 
-  /* USER CODE END TIM2_Init 2 */
-  HAL_TIM_MspPostInit(&htim2);
+  /* USER CODE END TIM15_Init 2 */
+  HAL_TIM_MspPostInit(&htim15);
 
 }
 
